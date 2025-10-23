@@ -14,17 +14,11 @@ app.use(express.json());
 // 4. تحديد المسار الرئيسي للـ APIs
 app.use('/api/auth', authRoutes); 
 
-// 5. (الأهم) الاتصال بالداتابيز أولاً
+// 5. (جديد) الاتصال بالداتابيز (مرة واحدة)
 mongoose.connect(process.env.DB_CONNECT)
-  .then(() => {
-    console.log('تم الاتصال بقاعدة البيانات بنجاح!');
-    
-    // 6. (جديد) تشغيل السيرفر *بعد* نجاح الاتصال
-    app.listen(PORT, () => {
-      console.log(`السيرفر شغال على http://localhost:${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error('!!!!!!!!!! فشل الاتصال بالداتابيز !!!!!!!!!!!');
-    console.error(err);
-  });
+  .then(() => console.log('تم الاتصال بقاعدة البيانات بنجاح!'))
+  .catch((err) => console.error('!!!!!! فشل الاتصال بالداتابيز:', err));
+
+// 6. (جديد) تصدير التطبيق لـ Vercel
+// Vercel هو اللي هيتكفل بتشغيله كـ Serverless Function
+module.exports = app;

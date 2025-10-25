@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const User = require('../models/User'); // (Make sure 'U' is capitalized)
+const User = require('../models/user'); // (Make sure 'U' is capitalized)
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 

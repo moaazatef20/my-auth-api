@@ -1,81 +1,131 @@
 const router = require('express').Router();
-const User = require('../models/user'); // هنجيب الموديل اللي لسه عاملينه
-const bcrypt = require('bcryptjs'); // مكتبة تشفير الباسورد
-const jwt = require('jsonwebtoken'); // مكتبة التوكن
+const User = require('../models/User'); // (Make sure 'U' is capitalized)
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 // ---------------------------------
-// API: التسجيل (Sign Up / Register) - (نسخة محدثة)
+// API: Register
 // ---------------------------------
 router.post('/register', async (req, res) => {
-
-  console.log('!!! === ريكويست تسجيل جديد وصل === !!!'); // <--- السطر الجديد
-
-  // 1. (جديد) نتأكد إن الباسورد متطابق
+  
+  // 1. Validate: Password match
   if (req.body.password !== req.body.repassword) {
-    return res.status(400).send('كلمة السر وتأكيدها غير متطابقين');
+    return res.status(400).json({
+      status: 'fail',
+      message: 'Password and confirmation password do not match.'
+    });
   }
 
-  // 2. نتأكد إن الإيميل مش متسجل قبل كده
+  // 2. Validate: Check if email is already in use
   const emailExists = await User.findOne({ email: req.body.email });
   if (emailExists) {
-    return res.status(400).send('هذا الإيميل مسجل بالفعل');
+    return res.status(400).json({
+      status: 'fail',
+      message: 'This email is already in use.'
+    });
   }
 
-  // 3. (جديد) نتأكد إن رقم التليفون مش متسجل قبل كده
+  // 3. Validate: Check if phone number is already in use
   const phoneExists = await User.findOne({ phone: req.body.phone });
   if (phoneExists) {
-    return res.status(400).send('رقم الهاتف هذا مسجل بالفعل');
+    return res.status(400).json({
+      status: 'fail',
+      message: 'This phone number is already in use.'
+    });
   }
 
-  // 4. تشفير الباسورد (Hashing)
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(req.body.password, salt);
-
-  // 5. إنشاء يوزر جديد (مع إضافة التليفون)
-  const user = new User({
-    name: req.body.name,
-    email: req.body.email,
-    phone: req.body.phone, // (سطر جديد)
-    password: hashedPassword 
-  });
-
+  // If all validations pass, proceed to create user
   try {
-    // 6. حفظ اليوزر في الداتابيز
+    // 4. Hash the password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(req.body.password, salt);
+
+    // 5. Create a new user instance
+    const user = new User({
+      name: req.body.name,
+      email: req.body.email,
+      phone: req.body.phone,
+      password: hashedPassword 
+    });
+
+    // 6. Save the user to the database
     const savedUser = await user.save();
-    res.status(201).send({ userId: savedUser._id }); // نرجع رسالة نجاح
+    
+    // 7. Send success response
+    res.status(201).json({
+      status: 'success',
+      message: 'User registered successfully.',
+      data: {
+        userId: savedUser._id
+      }
+    });
+
   } catch (err) {
-    res.status(400).send(err);
+    // 8. Handle server errors
+    res.status(500).json({
+      status: 'error',
+      message: 'An unexpected server error occurred.',
+      error: err.message
+    });
   }
 });
 
 
 // ---------------------------------
-// API: تسجيل الدخول (Login)
+// API: Login
 // ---------------------------------
 router.post('/login', async (req, res) => {
   
-  // 1. نتأكد إن الإيميل موجود
-  const user = await User.findOne({ email: req.body.email });
-  if (!user) {
-    return res.status(400).send('الإيميل أو الباسورد خطأ');
-  }
+  try {
+    // 1. Check if user exists (by email)
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) {
+      // (Security) Send a generic message
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid credentials. Please check email and password.'
+      });
+    }
 
-  // 2. نقارن الباسورد اللي جالنا بالباسورد المتشفر في الداتابيز
-  const validPass = await bcrypt.compare(req.body.password, user.password);
-  if (!validPass) {
-    return res.status(400).send('الإيميل أو الباسورد خطأ');
-  }
+    // 2. Check if password is correct
+    const validPass = await bcrypt.compare(req.body.password, user.password);
+    if (!validPass) {
+      // (Security) Send the *same* generic message
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid credentials. Please check email and password.'
+      });
+    }
 
-  // 3. (أهم خطوة) لو كله تمام: نعمل "توكن" (JWT)
-  // التوكن ده هو "تصريح الدخول" اللي الـ Front-end هيستخدمه بعد كده
-  // لازم نعمل "سر" (Secret) للتوكن ده. هنحطه في ملف .env
-  const token = jwt.sign(
-    { _id: user._id, name: user.name }, // دي البيانات اللي هنخزنها جوه التوكن
-    process.env.TOKEN_SECRET // ده المفتاح السري بتاعنا
-  ); 
-  
-  // 4. نرجع التوكن للـ Front-end
-  res.header('auth-token', token).send({ token: token });
+    // 3. If credentials are valid, create and assign a token
+    const token = jwt.sign(
+      { _id: user._id, name: user.name }, // Payload
+      process.env.TOKEN_SECRET,
+      { expiresIn: '24h' } // (Good practice) Make the token expire
+    ); 
+    
+    // 4. Send success response with token and user data
+    res.status(200).json({
+      status: 'success',
+      message: 'Login successful.',
+      data: {
+        token: token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email
+        }
+      }
+    });
+
+  } catch (err) {
+    // 5. Handle server errors
+    res.status(500).json({
+      status: 'error',
+      message: 'An unexpected server error occurred.',
+      error: err.message
+    });
+  }
 });
 
 
